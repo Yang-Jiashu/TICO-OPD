@@ -9,7 +9,7 @@
   },
   "aime25": {
     "hub": "MathArena/aime_2025",
-    "fallback_hub": "math-ai/aime25",
+    "fallback_hub": "test-time-compute/aime_2025",
     "split": "train",
     "input_key": "auto",
     "answer_key": "auto",

@@ -410,31 +410,36 @@ TICO-OPD
     └── utils/test_future_kl_policy_loss.py
 ```
 
-## Algorithmic References
+## Implemented vs Optional Extensions
 
-TICO-OPD builds on three ideas:
+Implemented in this repo:
 
-1. **Future-KL token credit assignment** from FIPO: Future-KL Influenced Policy Optimization introduces discounted future-KL as a way to assign denser token-level credit for reasoning trajectories.
+```text
+Future-KL-style trajectory weighting
+teacher-logprob OPD plumbing
+compression-aware advantage shaping
+coverage-aware EOS pressure
+Qwen3 teacher/student launch scripts
+AIME24/AIME25/MATH500 evaluation scripts
+DAPO-Math-17k data preparation
+```
 
-2. **On-policy distillation** from OPD-style training: the student samples from its own policy, while a stronger teacher provides token-level supervision on those on-policy responses.
-
-3. **Selective compression**: once token influence is available, low-influence spans can be penalized, masked, or later rewritten while high-influence tokens remain protected.
-
-Useful links:
-
-- FIPO paper page: https://huggingface.co/papers/2603.19835
-- FIPO arXiv: https://arxiv.org/abs/2603.19835
-- TIP / token importance in OPD: https://arxiv.org/abs/2604.14084
-
-## What This Is Not Yet
-
-This implementation does **not** yet perform true span rewriting:
+Optional extension, not part of the core implementation:
 
 ```text
 [y_i ... y_j] -> z
 ```
 
-The current implementation is training-side shaping:
+This is true span rewriting: replacing a multi-token span with a shorter behavior-equivalent phrase.
+
+Why it is not in the core path:
+
+1. It is a separate data-generation algorithm, not the OPD training objective itself.
+2. It requires an additional rewrite model or teacher call, plus a judge/filter.
+3. A behavior-equivalent rewrite should be accepted only after checking that future behavior changes little, which means extra Future-KL or proxy computation.
+4. Mixing span rewriting into the first implementation makes ablations unclear: gains could come from better OPD credit assignment, from data rewriting, or from both.
+
+So the current implementation intentionally focuses on training-time compression shaping:
 
 ```text
 protect high-importance tokens
@@ -442,13 +447,27 @@ penalize low-importance continuation
 encourage EOS after high coverage
 ```
 
-Span-level behavior-equivalent rewriting can be added as a later data-generation stage:
+If span rewriting is added later, the acceptance rule should be:
 
 ```text
 accept rewrite z only if:
 len(z) < len(y_i ... y_j)
 Future-KL(original span, compressed span) < epsilon
 ```
+
+In short: TICO-OPD already uses the importance signal to reduce output length during training; span rewriting is the next optional layer for data-side compression.
+
+## References and Provenance
+
+See [REFERENCES.md](REFERENCES.md) for papers, datasets, Qwen3 references, and upstream code provenance.
+
+Short version:
+
+- Future-KL credit assignment is from FIPO, not newly invented here.
+- OPD/token-importance background is related to TIP and OPD literature.
+- The implementation is a patch on top of `THUDM/slime`; files under `slime/` are modified slime files.
+- Qwen3 launch defaults follow Qwen3 thinking-mode sampling recommendations.
+- AIME24/AIME25/MATH500/DAPO17k are external datasets; this repo only provides download/conversion/evaluation scripts.
 
 ## Suggested Experiment Ladder
 

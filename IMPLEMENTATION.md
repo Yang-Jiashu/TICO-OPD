@@ -54,11 +54,13 @@ Full algorithm README and recommended launch arguments.
 
 This version implements trajectory-influence weighted OPD and selective compression pressure.
 
-It does not yet implement true span rewriting of the form:
+It intentionally does not put true span rewriting in the core training path:
 
 ```text
 [y_i ... y_j] -> z
 ```
+
+Span rewriting is a separate data-generation layer. It needs a rewrite model or teacher call, a judge/filter, and an additional behavior-equivalence check. Keeping it separate makes the main ablation cleaner: first test whether trajectory influence improves OPD and whether low-influence continuation pressure reduces length.
 
 The current compression mechanism is training-time shaping:
 
