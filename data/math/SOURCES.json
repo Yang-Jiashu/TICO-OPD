@@ -1,0 +1,51 @@
+{
+  "aime24": {
+    "hub": "OpenRLHF/aime-2024",
+    "split": "train",
+    "license": "Apache-2.0",
+    "rows": 30,
+    "input_key": "prompt",
+    "answer_key": "label",
+    "files": [
+      "aime24.jsonl"
+    ]
+  },
+  "aime25": {
+    "hub": "MathArena/aime_2025",
+    "split": "train",
+    "license": "Dataset card",
+    "rows": 30,
+    "input_key": "problem",
+    "answer_key": "answer",
+    "files": [
+      "aime25.jsonl"
+    ]
+  },
+  "math500": {
+    "hub": "HuggingFaceH4/MATH-500",
+    "split": "test",
+    "license": "MIT",
+    "rows": 500,
+    "input_key": "problem",
+    "answer_key": "answer",
+    "files": [
+      "math500.jsonl"
+    ]
+  },
+  "dapo17k": {
+    "hub": "BytedTsinghua-SIA/DAPO-Math-17k",
+    "split": "train",
+    "license": "Dataset card",
+    "rows": 17000,
+    "input_key": "prompt",
+    "answer_key": "reward_model",
+    "files": [
+      "dapo17k.jsonl",
+      "dapo17k-00000.jsonl",
+      "dapo17k-00001.jsonl",
+      "dapo17k-00002.jsonl",
+      "dapo17k-00003.jsonl"
+    ],
+    "subset_note": "Repo-ready 17,000-row subset generated with --max-rows 17000 from a larger Hugging Face split."
+  }
+}

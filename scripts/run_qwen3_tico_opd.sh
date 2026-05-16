@@ -12,7 +12,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 source "${SCRIPT_DIR}/../configs/qwen3/qwen3_model_matrix.sh"
 
-SLIME_DIR=${SLIME_DIR:-/root/slime}
+SLIME_DIR=${SLIME_DIR:-$(cd "${SCRIPT_DIR}/.." &>/dev/null && pwd)}
 MEGATRON_DIR=${MEGATRON_DIR:-/root/Megatron-LM}
 
 STUDENT_SIZE=${STUDENT_SIZE:-4B}
@@ -26,10 +26,10 @@ TEACHER_MODEL=${TEACHER_MODEL:-/root/Qwen3-${TEACHER_SIZE}}
 REF_LOAD=${REF_LOAD:-/root/Qwen3-${STUDENT_SIZE}_torch_dist}
 SAVE_DIR=${SAVE_DIR:-/root/checkpoints/qwen3-${STUDENT_SIZE}-tico-opd}
 
-TRAIN_DATA=${TRAIN_DATA:-/root/data/math/dapo17k.jsonl}
-AIME24=${AIME24:-/root/data/math/aime24.jsonl}
-AIME25=${AIME25:-/root/data/math/aime25.jsonl}
-MATH500=${MATH500:-/root/data/math/math500.jsonl}
+TRAIN_DATA=${TRAIN_DATA:-${SLIME_DIR}/data/math/dapo17k.jsonl}
+AIME24=${AIME24:-${SLIME_DIR}/data/math/aime24.jsonl}
+AIME25=${AIME25:-${SLIME_DIR}/data/math/aime25.jsonl}
+MATH500=${MATH500:-${SLIME_DIR}/data/math/math500.jsonl}
 
 NUM_GPUS=${NUM_GPUS:-8}
 ACTOR_NUM_GPUS=${ACTOR_NUM_GPUS:-${NUM_GPUS}}

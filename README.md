@@ -209,13 +209,22 @@ MATH500 -> HuggingFaceH4/MATH-500
 DAPO17k -> BytedTsinghua-SIA/DAPO-Math-17k, for training prompts
 ```
 
-Prepare local jsonl files:
+The repo includes ready-to-use jsonl files:
+
+```text
+data/math/aime24.jsonl
+data/math/aime25.jsonl
+data/math/math500.jsonl
+data/math/dapo17k.jsonl
+```
+
+Regenerate them when needed:
 
 ```bash
-python3 scripts/prepare_math_data.py --name aime24 --out-dir /root/data/math
-python3 scripts/prepare_math_data.py --name aime25 --out-dir /root/data/math
-python3 scripts/prepare_math_data.py --name math500 --out-dir /root/data/math
-python3 scripts/prepare_math_data.py --name dapo17k --out-dir /root/data/math
+python3 scripts/prepare_math_data.py --name aime24 --out-dir data/math --prefer-http
+python3 scripts/prepare_math_data.py --name aime25 --out-dir data/math --prefer-http
+python3 scripts/prepare_math_data.py --name math500 --out-dir data/math --prefer-http
+python3 scripts/prepare_math_data.py --name dapo17k --out-dir data/math --prefer-http --max-rows 17000
 ```
 
 The prepared files use normalized keys:
@@ -303,16 +312,16 @@ STUDENT_SIZE=8B TEACHER_SIZE=235B-A22B TEACHER_TP=8 bash scripts/run_qwen3_tico_
 Important environment variables:
 
 ```bash
-SLIME_DIR=/root/slime
+SLIME_DIR=/path/to/TICO-OPD
 MEGATRON_DIR=/root/Megatron-LM
 STUDENT_SIZE=4B
 TEACHER_SIZE=32B
 BASE_MODEL=/root/Qwen3-${STUDENT_SIZE}
 TEACHER_MODEL=/root/Qwen3-${TEACHER_SIZE}
-TRAIN_DATA=/root/data/math/dapo17k.jsonl
-AIME24=/root/data/math/aime24.jsonl
-AIME25=/root/data/math/aime25.jsonl
-MATH500=/root/data/math/math500.jsonl
+TRAIN_DATA=$SLIME_DIR/data/math/dapo17k.jsonl
+AIME24=$SLIME_DIR/data/math/aime24.jsonl
+AIME25=$SLIME_DIR/data/math/aime25.jsonl
+MATH500=$SLIME_DIR/data/math/math500.jsonl
 SAVE_DIR=/root/checkpoints/qwen3-${STUDENT_SIZE}-tico-opd
 NUM_GPUS=8
 STUDENT_TP=auto
