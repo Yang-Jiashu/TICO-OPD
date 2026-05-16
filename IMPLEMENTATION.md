@@ -1,6 +1,23 @@
 # Implementation Map
 
-This repository contains the TICO-OPD patch files for `slime`.
+This repository contains the full `slime` training framework plus the TICO-OPD changes.
+
+The original slime entrypoints are included:
+
+```text
+train.py
+train_async.py
+slime/ray/
+slime/backends/
+slime/rollout/
+slime/utils/
+scripts/
+examples/
+docs/
+docker/
+```
+
+The sections below list the main files touched by TICO-OPD.
 
 ## Files
 

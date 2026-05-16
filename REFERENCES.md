@@ -50,13 +50,13 @@ OPD trains a student on its own rollouts while matching a teacher distribution a
 
 ## Upstream Code Provenance
 
-This repository is not a full replacement for `slime`. It is a patch-style project built on top of the slime training stack.
+This repository is a full-framework fork built on top of the slime training stack.
 
 Upstream framework:
 
 - THUDM/slime: https://github.com/THUDM/slime
 
-Files under `slime/` in this repo are modified copies or patch targets from the slime codebase:
+Most framework files come from upstream slime. The main TICO-OPD modifications are concentrated in:
 
 ```text
 slime/utils/ppo_utils.py

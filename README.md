@@ -2,7 +2,7 @@
 
 **Trajectory-Influence Compression for On-Policy Distillation**
 
-TICO-OPD is an experimental extension to `slime` OPD that uses Future-KL-style token credit assignment to distill the tokens that steer reasoning, while applying compression pressure only to low-influence continuation tokens.
+TICO-OPD is an experimental full-framework fork of `slime` OPD that uses Future-KL-style token credit assignment to distill the tokens that steer reasoning, while applying compression pressure only to low-influence continuation tokens.
 
 ```text
 Distill what changes the trajectory.
@@ -61,7 +61,24 @@ where `compressible_t` becomes active after a length budget or after cumulative 
 
 ## What Is Implemented
 
-This repo contains a patch-style implementation for `slime`.
+This repo now contains the full `slime` training framework plus the TICO-OPD changes. It includes:
+
+```text
+train.py / train_async.py
+Ray rollout and training orchestration
+Megatron backend utilities
+SGLang rollout utilities
+model scripts, examples, docs, tests, and docker files
+TICO-OPD algorithm changes
+Qwen3 math training and evaluation scripts
+```
+
+The original upstream README is kept as:
+
+```text
+UPSTREAM_SLIME_README.md
+UPSTREAM_SLIME_README_zh.md
+```
 
 ### 1. Future-KL Policy Loss
 
@@ -443,22 +460,33 @@ or relax:
 ```text
 TICO-OPD
 ├── README.md
+├── DATA.md
 ├── IMPLEMENTATION.md
+├── REFERENCES.md
+├── train.py
+├── train_async.py
+├── docker/
+├── docs/
+├── scripts/
+│   ├── run_qwen3_tico_opd.sh
+│   ├── launch_qwen3_sglang.sh
+│   └── models/
+├── eval/
+│   ├── run_math_eval.py
+│   └── math_answer.py
+├── configs/
+│   └── qwen3/
 ├── assets/
 │   ├── tico-opd-overview.png
 │   └── future-kl-vs-entropy.png
 ├── slime/
-│   ├── utils/
-│   │   ├── ppo_utils.py
-│   │   └── arguments.py
+│   ├── ray/
 │   ├── rollout/
-│   │   └── on_policy_distillation.py
-│   └── backends/megatron_utils/
-│       ├── loss.py
-│       ├── model.py
-│       └── data.py
+│   ├── backends/
+│   └── utils/
+├── slime_plugins/
+├── examples/
 └── tests/
-    └── utils/test_future_kl_policy_loss.py
 ```
 
 ## Implemented vs Optional Extensions
