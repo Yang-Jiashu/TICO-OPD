@@ -179,6 +179,92 @@ Start conservative. This tests trajectory weighting and gentle compression witho
 --compression-reward-coef 0.0
 ```
 
+## Qwen3 Math Evaluation
+
+TICO-OPD includes a small math evaluation harness for Qwen3-style reasoning models.
+
+Covered datasets:
+
+```text
+AIME24  -> OpenRLHF/aime-2024
+AIME25  -> MathArena/aime_2025
+MATH500 -> HuggingFaceH4/MATH-500
+DAPO17k -> BytedTsinghua-SIA/DAPO-Math-17k, for training prompts
+```
+
+Prepare local jsonl files:
+
+```bash
+python3 scripts/prepare_math_data.py --name aime24 --out-dir /root/data/math
+python3 scripts/prepare_math_data.py --name aime25 --out-dir /root/data/math
+python3 scripts/prepare_math_data.py --name math500 --out-dir /root/data/math
+python3 scripts/prepare_math_data.py --name dapo17k --out-dir /root/data/math
+```
+
+Launch a Qwen3 endpoint with sglang:
+
+```bash
+MODEL_PATH=Qwen/Qwen3-4B \
+CUDA_VISIBLE_DEVICES=0 \
+TP=1 \
+PORT=30000 \
+bash scripts/launch_qwen3_sglang.sh
+```
+
+Run AIME24, AIME25, and MATH500 evaluation:
+
+```bash
+MODEL=Qwen3-4B \
+BASE_URL=http://127.0.0.1:30000/v1 \
+N_SAMPLES=16 \
+bash scripts/eval_qwen3_math.sh
+```
+
+The evaluator uses an OpenAI-compatible `/v1/chat/completions` endpoint and extracts final answers from `\boxed{...}` or common final-answer phrases.
+
+Qwen3 thinking-mode defaults:
+
+```text
+temperature = 0.6
+top_p       = 0.95
+top_k       = 20
+min_p       = 0.0
+max_tokens  = 16384
+```
+
+## Qwen3 TICO-OPD Training Example
+
+The Qwen3-4B TICO-OPD training launcher is:
+
+```bash
+bash scripts/run_qwen3_4b_tico_opd.sh
+```
+
+Important environment variables:
+
+```bash
+SLIME_DIR=/root/slime
+MEGATRON_DIR=/root/Megatron-LM
+BASE_MODEL=/root/Qwen3-4B
+TEACHER_MODEL=/root/Qwen3-32B
+TRAIN_DATA=/root/data/math/dapo17k.jsonl
+AIME24=/root/data/math/aime24.jsonl
+AIME25=/root/data/math/aime25.jsonl
+MATH500=/root/data/math/math500.jsonl
+SAVE_DIR=/root/checkpoints/qwen3-4b-tico-opd
+NUM_GPUS=8
+```
+
+This script combines:
+
+```text
+DAPO17k training prompts
+Qwen3 teacher logprob OPD
+Future-KL policy loss
+compression-aware OPD shaping
+AIME24/AIME25/MATH500 eval hooks
+```
+
 Then increase compression gradually:
 
 ```bash

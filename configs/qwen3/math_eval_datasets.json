@@ -1,0 +1,34 @@
+{
+  "aime24": {
+    "hub": "OpenRLHF/aime-2024",
+    "fallback_hub": "HuggingFaceH4/aime_2024",
+    "split": "train",
+    "input_key": "auto",
+    "answer_key": "auto",
+    "description": "AIME 2024, 30 competition math problems."
+  },
+  "aime25": {
+    "hub": "MathArena/aime_2025",
+    "fallback_hub": "math-ai/aime25",
+    "split": "train",
+    "input_key": "auto",
+    "answer_key": "auto",
+    "description": "AIME 2025, 30 competition math problems."
+  },
+  "math500": {
+    "hub": "HuggingFaceH4/MATH-500",
+    "fallback_hub": "PrimeIntellect/MATH-500",
+    "split": "test",
+    "input_key": "auto",
+    "answer_key": "auto",
+    "description": "MATH-500 evaluation set."
+  },
+  "dapo17k": {
+    "hub": "BytedTsinghua-SIA/DAPO-Math-17k",
+    "fallback_hub": "OpenRLHF/dapo-math-17k",
+    "split": "train",
+    "input_key": "auto",
+    "answer_key": "auto",
+    "description": "DAPO-Math-17k training prompts with integer answers."
+  }
+}
