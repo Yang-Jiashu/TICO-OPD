@@ -7,6 +7,7 @@ set -euo pipefail
 # Example:
 #   STUDENT_SIZE=4B TEACHER_SIZE=32B bash scripts/run_qwen3_tico_opd.sh
 #   STUDENT_SIZE=8B TEACHER_SIZE=235B-A22B TEACHER_TP=8 bash scripts/run_qwen3_tico_opd.sh
+#   USE_EXTERNAL_TEACHER=true TEACHER_URL=http://teacher-host:13141/generate bash scripts/run_qwen3_tico_opd.sh
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 source "${SCRIPT_DIR}/../configs/qwen3/qwen3_model_matrix.sh"
@@ -40,7 +41,10 @@ ROLLOUT_GPUS_PER_ENGINE=${ROLLOUT_GPUS_PER_ENGINE:-${STUDENT_TP}}
 
 TEACHER_IP=${TEACHER_IP:-127.0.0.1}
 TEACHER_PORT=${TEACHER_PORT:-13141}
-TEACHER_URL="http://${TEACHER_IP}:${TEACHER_PORT}/generate"
+USE_EXTERNAL_TEACHER=${USE_EXTERNAL_TEACHER:-false}
+TEACHER_URL=${TEACHER_URL:-http://${TEACHER_IP}:${TEACHER_PORT}/generate}
+TEACHER_CUDA_VISIBLE_DEVICES=${TEACHER_CUDA_VISIBLE_DEVICES:-}
+TEACHER_MEM_FRACTION_STATIC=${TEACHER_MEM_FRACTION_STATIC:-0.6}
 
 MODEL_ARGS_FILE="$(qwen3_slime_model_args_file "${STUDENT_SIZE}")"
 source "${SLIME_DIR}/scripts/models/${MODEL_ARGS_FILE}"
@@ -50,20 +54,34 @@ echo "  student: ${STUDENT_SIZE} (${BASE_MODEL}; hub=${STUDENT_MODEL_ID})"
 echo "  teacher: ${TEACHER_SIZE} (${TEACHER_MODEL}; hub=${TEACHER_MODEL_ID})"
 echo "  student TP: ${STUDENT_TP}"
 echo "  teacher TP: ${TEACHER_TP}"
+echo "  teacher URL: ${TEACHER_URL}"
 echo "  train data: ${TRAIN_DATA}"
 
-python3 -m sglang.launch_server \
-  --model-path "${TEACHER_MODEL}" \
-  --host 0.0.0.0 \
-  --port "${TEACHER_PORT}" \
-  --tp "${TEACHER_TP}" \
-  --chunked-prefill-size 8192 \
-  --mem-fraction-static 0.6 &
+if [[ "${USE_EXTERNAL_TEACHER}" == "true" ]]; then
+  echo "Using external teacher server: ${TEACHER_URL}"
+else
+  TEACHER_ENV=()
+  if [[ -n "${TEACHER_CUDA_VISIBLE_DEVICES}" ]]; then
+    TEACHER_ENV=(env CUDA_VISIBLE_DEVICES="${TEACHER_CUDA_VISIBLE_DEVICES}")
+    echo "Starting local teacher with CUDA_VISIBLE_DEVICES=${TEACHER_CUDA_VISIBLE_DEVICES}"
+  else
+    echo "Starting local teacher without overriding CUDA_VISIBLE_DEVICES."
+    echo "Set TEACHER_CUDA_VISIBLE_DEVICES to avoid teacher/student GPU overlap on a shared node."
+  fi
 
-until curl -sf "http://${TEACHER_IP}:${TEACHER_PORT}/health_generate" >/dev/null; do
-  echo "waiting for teacher at ${TEACHER_URL}"
-  sleep 5
-done
+  "${TEACHER_ENV[@]}" python3 -m sglang.launch_server \
+    --model-path "${TEACHER_MODEL}" \
+    --host 0.0.0.0 \
+    --port "${TEACHER_PORT}" \
+    --tp "${TEACHER_TP}" \
+    --chunked-prefill-size 8192 \
+    --mem-fraction-static "${TEACHER_MEM_FRACTION_STATIC}" &
+
+  until curl -sf "http://${TEACHER_IP}:${TEACHER_PORT}/health_generate" >/dev/null; do
+    echo "waiting for teacher at ${TEACHER_URL}"
+    sleep 5
+  done
+fi
 
 ray start --head --node-ip-address 127.0.0.1 --num-gpus "${NUM_GPUS}" \
   --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265

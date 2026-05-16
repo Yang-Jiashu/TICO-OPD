@@ -201,6 +201,14 @@ python3 scripts/prepare_math_data.py --name math500 --out-dir /root/data/math
 python3 scripts/prepare_math_data.py --name dapo17k --out-dir /root/data/math
 ```
 
+The prepared files use normalized keys:
+
+```json
+{"prompt": "...", "label": "...", "source": "dapo17k", "source_dataset": "..."}
+```
+
+See [DATA.md](DATA.md) for the exact expected format.
+
 Launch a Qwen3 endpoint with sglang:
 
 ```bash
@@ -292,6 +300,8 @@ SAVE_DIR=/root/checkpoints/qwen3-${STUDENT_SIZE}-tico-opd
 NUM_GPUS=8
 STUDENT_TP=auto
 TEACHER_TP=auto
+TEACHER_CUDA_VISIBLE_DEVICES=0,1
+USE_EXTERNAL_TEACHER=false
 ```
 
 This script combines:
@@ -302,6 +312,47 @@ Qwen3 teacher logprob OPD
 Future-KL policy loss
 compression-aware OPD shaping
 AIME24/AIME25/MATH500 eval hooks
+```
+
+Teacher and student do **not** need the same number of GPUs.
+
+Recommended patterns:
+
+```bash
+# Same machine, explicit split: teacher on 0-1, slime/Ray sees the rest.
+TEACHER_CUDA_VISIBLE_DEVICES=0,1 \
+TEACHER_TP=2 \
+STUDENT_SIZE=4B \
+TEACHER_SIZE=32B \
+bash scripts/run_qwen3_tico_opd.sh
+
+# Separate teacher service, often best for large teachers.
+USE_EXTERNAL_TEACHER=true \
+TEACHER_URL=http://teacher-host:13141/generate \
+STUDENT_SIZE=4B \
+TEACHER_SIZE=235B-A22B \
+bash scripts/run_qwen3_tico_opd.sh
+```
+
+The student-side GPU layout is controlled by:
+
+```text
+NUM_GPUS
+ACTOR_NUM_GPUS
+ROLLOUT_NUM_GPUS
+STUDENT_TP
+ROLLOUT_GPUS_PER_ENGINE
+MAX_TOKENS_PER_GPU
+```
+
+The teacher-side GPU layout is controlled independently by:
+
+```text
+TEACHER_TP
+TEACHER_CUDA_VISIBLE_DEVICES
+TEACHER_MEM_FRACTION_STATIC
+USE_EXTERNAL_TEACHER
+TEACHER_URL
 ```
 
 Then increase compression gradually:
