@@ -204,7 +204,7 @@ python3 scripts/prepare_math_data.py --name dapo17k --out-dir /root/data/math
 Launch a Qwen3 endpoint with sglang:
 
 ```bash
-MODEL_PATH=Qwen/Qwen3-4B \
+MODEL_SIZE=4B \
 CUDA_VISIBLE_DEVICES=0 \
 TP=1 \
 PORT=30000 \
@@ -234,10 +234,45 @@ max_tokens  = 16384
 
 ## Qwen3 TICO-OPD Training Example
 
-The Qwen3-4B TICO-OPD training launcher is:
+The general Qwen3 TICO-OPD training launcher is:
+
+```bash
+STUDENT_SIZE=4B \
+TEACHER_SIZE=32B \
+bash scripts/run_qwen3_tico_opd.sh
+```
+
+The compatibility wrapper below is equivalent to `STUDENT_SIZE=4B TEACHER_SIZE=32B`:
 
 ```bash
 bash scripts/run_qwen3_4b_tico_opd.sh
+```
+
+Supported Qwen3 size names:
+
+```text
+0.6B
+1.7B
+4B
+4B-Instruct-2507
+8B
+14B
+32B
+30B-A3B
+235B-A22B
+```
+
+Example teacher/student pairs:
+
+```bash
+# cheap smoke run
+STUDENT_SIZE=1.7B TEACHER_SIZE=8B bash scripts/run_qwen3_tico_opd.sh
+
+# default dense distillation
+STUDENT_SIZE=4B TEACHER_SIZE=32B bash scripts/run_qwen3_tico_opd.sh
+
+# stronger MoE teacher
+STUDENT_SIZE=8B TEACHER_SIZE=235B-A22B TEACHER_TP=8 bash scripts/run_qwen3_tico_opd.sh
 ```
 
 Important environment variables:
@@ -245,14 +280,18 @@ Important environment variables:
 ```bash
 SLIME_DIR=/root/slime
 MEGATRON_DIR=/root/Megatron-LM
-BASE_MODEL=/root/Qwen3-4B
-TEACHER_MODEL=/root/Qwen3-32B
+STUDENT_SIZE=4B
+TEACHER_SIZE=32B
+BASE_MODEL=/root/Qwen3-${STUDENT_SIZE}
+TEACHER_MODEL=/root/Qwen3-${TEACHER_SIZE}
 TRAIN_DATA=/root/data/math/dapo17k.jsonl
 AIME24=/root/data/math/aime24.jsonl
 AIME25=/root/data/math/aime25.jsonl
 MATH500=/root/data/math/math500.jsonl
-SAVE_DIR=/root/checkpoints/qwen3-4b-tico-opd
+SAVE_DIR=/root/checkpoints/qwen3-${STUDENT_SIZE}-tico-opd
 NUM_GPUS=8
+STUDENT_TP=auto
+TEACHER_TP=auto
 ```
 
 This script combines:
