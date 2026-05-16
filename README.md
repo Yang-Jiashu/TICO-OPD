@@ -478,14 +478,3 @@ Short version:
 5. Only then test low-importance masking.
 
 This makes it easier to separate gains from better trajectory credit assignment, compression shaping, and hard token masking.
-
-## Figure Generation
-
-The README figures were generated with GPT Image 2 for documentation purposes:
-
-```text
-assets/tico-opd-overview.png
-assets/future-kl-vs-entropy.png
-```
-
-They are explanatory diagrams, not empirical results.
