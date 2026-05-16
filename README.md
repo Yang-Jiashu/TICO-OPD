@@ -2,103 +2,91 @@
 
 **Trajectory-Influence Compression for On-Policy Distillation**
 
-TICO-OPD is an experimental OPD extension for learning the teacher's reasoning behavior while reducing unnecessary output length.
-
-The key idea is simple:
+TICO-OPD is an experimental extension to `slime` OPD that uses Future-KL-style token credit assignment to distill the tokens that steer reasoning, while applying compression pressure only to low-influence continuation tokens.
 
 ```text
-Do not compress important reasoning tokens.
-Compress only low-importance continuation tokens.
+Distill what changes the trajectory.
+Compress what does not.
 ```
 
-Instead of applying a global length penalty, TICO-OPD estimates which tokens influence the future reasoning trajectory, strengthens distillation on those tokens, and applies compression pressure only where the trajectory signal is weak.
+![TICO-OPD overview](assets/tico-opd-overview.png)
 
-## Why
+## Why TICO-OPD
 
-Normal OPD can preserve teacher capability, but it often inherits the teacher's verbose style.
+Normal on-policy distillation is good at preserving teacher behavior, but it often inherits the teacher's verbosity:
 
 ```text
-Teacher long answer -> student learns long answer
+teacher long answer -> student learns long answer
 ```
 
-TICO-OPD changes the credit assignment:
+TICO-OPD changes the training signal from sequence-level imitation to trajectory-aware token credit assignment:
 
 ```text
-Teacher long answer
-  -> identify trajectory-critical tokens
-  -> distill critical tokens more strongly
-  -> penalize low-importance continuation tokens
-  -> encourage stopping after coverage is high
+teacher rollout
+  -> estimate which tokens influence future behavior
+  -> distill high-influence tokens more strongly
+  -> discourage low-influence continuation tokens
+  -> encourage EOS after enough important content is covered
 ```
 
-The result should be a student that keeps important reasoning behavior while learning to stop earlier when the useful information is already covered.
-
-## Core Intuition
-
-TICO-OPD uses a token importance signal:
+The goal is not blind length reduction. The goal is **behavior-preserving compression**:
 
 ```text
-I_t = normalized future trajectory influence of token t
+same useful reasoning behavior, fewer unnecessary tokens
 ```
 
-High `I_t` means the token is likely to affect future reasoning. These tokens should be protected and distilled strongly.
+## Core Idea
 
-Low `I_t` means the token is likely to be filler, repeated explanation, formatting, or low-value continuation. These tokens are compression candidates.
-
-The compression-aware advantage shaping is:
+For each response token `y_t`, TICO-OPD estimates an importance score:
 
 ```text
-A'_t = A_t - lambda * (1 - I_t) * compressible_t
+I_t ~= Future-KL(t)
 ```
 
-where:
+High `I_t` means changing that token is likely to change later model behavior. These tokens are protected and receive stronger distillation.
+
+Low `I_t` means the token is likely to be filler, repeated explanation, formatting, or a low-value continuation. These tokens become compression candidates.
+
+The training-side shaping is:
 
 ```text
-compressible_t = token is beyond length budget
-              or token appears after enough importance coverage
+A'_t = A_t
+     - lambda * (1 - I_t) * compressible_t
+     + eos_bonus_t
 ```
 
-This gives the model a very specific lesson:
+where `compressible_t` becomes active after a length budget or after cumulative importance coverage is high.
 
-```text
-keep what changes the reasoning trajectory,
-shorten what does not.
-```
+![Future-KL vs entropy](assets/future-kl-vs-entropy.png)
 
 ## What Is Implemented
 
-TICO-OPD has two implemented pieces in this repo.
+This repo contains a patch-style implementation for `slime`.
 
 ### 1. Future-KL Policy Loss
 
-Enable:
+Enable with:
 
 ```bash
 --policy-loss-type future_kl
 ```
 
-This adds a FIPO-style future-KL influence weight to the policy loss.
+This reweights the policy objective with a discounted future trajectory signal.
 
-In slime notation:
-
-```text
-ppo_kl_t = old_log_prob_t - log_prob_t
-negative_approx_kl_t = log_prob_t - old_log_prob_t = -ppo_kl_t
-```
-
-The future signal is accumulated over the response suffix:
+Code:
 
 ```text
-FutureKL_t = discounted_sum_{k >= t}(negative_approx_kl_k)
+slime/utils/ppo_utils.py
+  compute_future_token_importance(...)
+  compute_future_kl_policy_loss(...)
+
+slime/backends/megatron_utils/loss.py
+  policy_loss_type == "future_kl"
 ```
 
-Then the token policy loss is weighted by the future influence signal.
+### 2. Compression-Aware OPD
 
-Use this when you want OPD/RL updates to focus on tokens that change downstream reasoning behavior.
-
-### 2. Compression-Aware OPD Shaping
-
-Enable:
+Enable with:
 
 ```bash
 --use-compression-opd
@@ -107,24 +95,66 @@ Enable:
 This applies selective compression pressure after advantages are computed:
 
 ```text
-high-importance tokens -> protected
-low-importance continuation tokens -> penalized
-last token / EOS region -> rewarded when coverage is high
-truncated samples -> penalized
+high-importance token -> protect
+low-importance token beyond budget -> penalize continuation
+coverage high -> encourage stopping
+coverage low -> avoid premature EOS
 ```
 
-Training-time importance uses teacher/student divergence when teacher log-probs are available through OPD.
-
-The OPD rollout post-process also includes a cheaper teacher-surprise proxy for:
+Code:
 
 ```text
-reward shaping
-optional low-importance loss masking
+slime/backends/megatron_utils/loss.py
+  apply_compression_opd_to_advantages(...)
+
+slime/rollout/on_policy_distillation.py
+  reward_func(...)
+  post_process_rewards(...)
+```
+
+### 3. OPD Teacher Logprob Plumbing
+
+Teacher logprobs are extracted during OPD rollout post-processing and stored on each sample:
+
+```text
+sample.teacher_log_probs
+sample.loss_mask
+sample.metadata["compression_importance_mean"]
+sample.metadata["compression_low_importance_tokens"]
+```
+
+Safety detail: if teacher logprobs do not cover the full response, missing positions are masked out instead of being treated as valid zero-logprob supervision.
+
+Code:
+
+```text
+slime/rollout/on_policy_distillation.py
+  _fit_response_log_probs(...)
+```
+
+### 4. CLI Arguments
+
+All new arguments are wired through:
+
+```text
+slime/utils/arguments.py
+```
+
+Main switches:
+
+```bash
+--policy-loss-type future_kl
+--use-compression-opd
+--compression-length-budget-ratio
+--compression-coverage-threshold
+--compression-advantage-coef
+--compression-eos-coef
+--compression-reward-coef
 ```
 
 ## Quick Start
 
-Start conservative. This turns on trajectory weighting and gentle compression without rollout-side masking:
+Start conservative. This tests trajectory weighting and gentle compression without rollout-side masking:
 
 ```bash
 --use-opd \
@@ -149,11 +179,7 @@ Start conservative. This turns on trajectory weighting and gentle compression wi
 --compression-reward-coef 0.0
 ```
 
-This is the recommended first run because it mostly tests the training-side signal.
-
-## Stronger Compression
-
-After the first run is stable, increase compression gradually:
+Then increase compression gradually:
 
 ```bash
 --compression-length-budget-ratio 0.60 \
@@ -162,115 +188,63 @@ After the first run is stable, increase compression gradually:
 --compression-reward-coef 0.02
 ```
 
-Only enable rollout-side low-importance masking after quality is stable:
+Only enable hard low-importance masking after quality is stable:
 
 ```bash
 --compression-mask-low-importance-tokens \
 --compression-low-importance-threshold 0.2
 ```
 
-This sets `loss_mask=0` for low-importance compressible tokens in the OPD rollout post-process path. In plain language: the student no longer directly distills those verbose parts.
-
-## Main Arguments
-
-### Trajectory-Influence Policy Loss
-
-`--policy-loss-type future_kl`
-
-Use future-KL influenced policy loss.
+## Important Parameters
 
 `--future-kl-decay-rate`
 
-Controls how far future token drift influences the current token. Larger values make the signal more long-range.
+Controls how much future positions contribute to each token's influence score. Larger values make the signal consider a longer future horizon.
 
 `--future-kl-start`
 
-`include_current` includes token `t` in its own future signal. `exclude_current` starts from the next token.
-
-`--future-kl-window`
-
-Maximum future window. `-1` means full suffix.
-
-`--future-kl-clip-ratio`
-
-Clips the influence weight. Start with `0.2`.
-
-### Compression Shaping
-
-`--use-compression-opd`
-
-Enable compression-aware advantage shaping.
-
-`--compression-length-budget`
-
-Absolute response token budget. Use this when you know the desired target length.
+Controls whether the current token contributes to its own future score. `include_current` is usually the first setting to try.
 
 `--compression-length-budget-ratio`
 
-Relative response budget. `0.75` means compression pressure starts after roughly 75% of the sampled response.
+Starts compression pressure after a fraction of the response length. `0.75` means the first 75% of the response is mostly protected from length pressure.
 
 `--compression-coverage-threshold`
 
-Cumulative importance threshold. `0.90` means later low-importance tokens become compressible once 90% of token importance has been covered.
+Encourages stopping after cumulative importance coverage is high, such as `0.90`.
 
 `--compression-advantage-coef`
 
-Penalty strength for low-importance continuation tokens. Start small.
+Strength of training-side low-importance continuation penalty.
 
 `--compression-eos-coef`
 
-Final-token shaping coefficient. Completed samples can get a small bonus when coverage is high; truncated samples get a penalty.
+Strength of coverage-aware EOS shaping.
 
 `--compression-reward-coef`
 
-Rollout reward penalty for low-importance compressible tokens. Keep this at `0.0` for the first run.
+Optional rollout-side scalar penalty for low-importance continuation tokens.
 
-`--compression-mask-low-importance-tokens`
+## Metrics to Watch
 
-Optional stronger mode. Masks low-importance compressible tokens during OPD rollout post-processing.
-
-## Compatibility
-
-Recommended advantage estimators:
-
-```bash
---advantage-estimator grpo
-```
-
-or:
-
-```bash
---advantage-estimator ppo
-```
-
-Avoid combining:
-
-```bash
---advantage-estimator gspo
---policy-loss-type future_kl
-```
-
-Reason: future-KL policy loss uses token-level ratios, while GSPO uses sequence-level KL.
-
-## Metrics To Watch
-
-Watch:
+Track these together:
 
 ```text
+train/policy_loss
+train/future_kl_importance
 train/compression_importance
 train/compression_penalty
-train/opd_reverse_kl
-train/response_len/mean
-train/reward
+response_length
+task reward / eval accuracy
 ```
 
-Healthy behavior usually looks like:
+Healthy early behavior:
 
 ```text
+quality is stable
 response length decreases slowly
-reward or accuracy stays flat or improves
-opd_reverse_kl does not spike
 compression_penalty is non-zero but not dominant
+importance is not collapsed to all zeros or all ones
 ```
 
 If quality drops, reduce:
@@ -281,42 +255,93 @@ If quality drops, reduce:
 --compression-reward-coef
 ```
 
-or relax compression:
+or relax:
 
 ```bash
 --compression-length-budget-ratio
 --compression-coverage-threshold
 ```
 
-## What This Is Not
-
-TICO-OPD does not currently rewrite the model output into a new shorter text sequence with an external compressor.
-
-It implements the training machinery for compression:
+## Code Map
 
 ```text
-trajectory-critical token protection
-low-importance continuation penalty
-coverage-aware stopping pressure
-optional low-importance loss masking
+TICO-OPD
+├── README.md
+├── IMPLEMENTATION.md
+├── assets/
+│   ├── tico-opd-overview.png
+│   └── future-kl-vs-entropy.png
+├── slime/
+│   ├── utils/
+│   │   ├── ppo_utils.py
+│   │   └── arguments.py
+│   ├── rollout/
+│   │   └── on_policy_distillation.py
+│   └── backends/megatron_utils/
+│       ├── loss.py
+│       ├── model.py
+│       └── data.py
+└── tests/
+    └── utils/test_future_kl_policy_loss.py
 ```
 
-For explicit span rewriting:
+## Algorithmic References
+
+TICO-OPD builds on three ideas:
+
+1. **Future-KL token credit assignment** from FIPO: Future-KL Influenced Policy Optimization introduces discounted future-KL as a way to assign denser token-level credit for reasoning trajectories.
+
+2. **On-policy distillation** from OPD-style training: the student samples from its own policy, while a stronger teacher provides token-level supervision on those on-policy responses.
+
+3. **Selective compression**: once token influence is available, low-influence spans can be penalized, masked, or later rewritten while high-influence tokens remain protected.
+
+Useful links:
+
+- FIPO paper page: https://huggingface.co/papers/2603.19835
+- FIPO arXiv: https://arxiv.org/abs/2603.19835
+- TIP / token importance in OPD: https://arxiv.org/abs/2604.14084
+
+## What This Is Not Yet
+
+This implementation does **not** yet perform true span rewriting:
 
 ```text
 [y_i ... y_j] -> z
+```
+
+The current implementation is training-side shaping:
+
+```text
+protect high-importance tokens
+penalize low-importance continuation
+encourage EOS after high coverage
+```
+
+Span-level behavior-equivalent rewriting can be added as a later data-generation stage:
+
+```text
+accept rewrite z only if:
 len(z) < len(y_i ... y_j)
 Future-KL(original span, compressed span) < epsilon
 ```
 
-add a custom rollout function that generates both long and short variants, then train with the same TICO-OPD knobs.
-
 ## Suggested Experiment Ladder
 
-1. Run OPD baseline and record quality plus response length.
-2. Add `--policy-loss-type future_kl` only.
+1. Run vanilla OPD as baseline.
+2. Add `--policy-loss-type future_kl`.
 3. Add `--use-compression-opd` with small coefficients.
-4. Increase compression coefficient or reduce budget ratio.
-5. Only then enable low-importance loss masking.
+4. Reduce `--compression-length-budget-ratio` slowly.
+5. Only then test low-importance masking.
 
-This ladder makes it easier to tell whether gains come from better trajectory credit assignment, compression shaping, or masking.
+This makes it easier to separate gains from better trajectory credit assignment, compression shaping, and hard token masking.
+
+## Figure Generation
+
+The README figures were generated with GPT Image 2 for documentation purposes:
+
+```text
+assets/tico-opd-overview.png
+assets/future-kl-vs-entropy.png
+```
+
+They are explanatory diagrams, not empirical results.
