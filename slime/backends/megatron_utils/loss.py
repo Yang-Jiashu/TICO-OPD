@@ -607,6 +607,10 @@ def apply_compression_opd_to_advantages(
 
     importance_chunks = []
     penalty_chunks = []
+    zone_chunks = []
+    low_importance_chunks = []
+    eos_bonus_chunks = []
+    coverage_chunks = []
 
     for i, adv in enumerate(advantages):
         total_len = total_lengths[i]
@@ -644,6 +648,9 @@ def apply_compression_opd_to_advantages(
         compression_zone = (positions >= budget) | (coverage >= args.compression_coverage_threshold)
         if args.compression_min_response_len > 0:
             compression_zone = compression_zone & (positions >= args.compression_min_response_len)
+        low_importance = importance <= args.compression_low_importance_threshold
+        valid_zone = compression_zone & full_mask.bool()
+        valid_low_importance = low_importance & full_mask.bool()
 
         penalty = (
             args.compression_advantage_coef
@@ -666,9 +673,21 @@ def apply_compression_opd_to_advantages(
             delta = slice_log_prob_with_cp(delta, total_len, response_len, args.qkv_format, max_seq_len)
             local_importance = slice_log_prob_with_cp(importance, total_len, response_len, args.qkv_format, max_seq_len)
             local_penalty = slice_log_prob_with_cp(penalty, total_len, response_len, args.qkv_format, max_seq_len)
+            local_zone = slice_log_prob_with_cp(
+                valid_zone.to(importance.dtype), total_len, response_len, args.qkv_format, max_seq_len
+            )
+            local_low_importance = slice_log_prob_with_cp(
+                valid_low_importance.to(importance.dtype), total_len, response_len, args.qkv_format, max_seq_len
+            )
+            local_eos_bonus = slice_log_prob_with_cp(eos_bonus, total_len, response_len, args.qkv_format, max_seq_len)
+            local_coverage = slice_log_prob_with_cp(coverage, total_len, response_len, args.qkv_format, max_seq_len)
         else:
             local_importance = importance
             local_penalty = penalty
+            local_zone = valid_zone.to(importance.dtype)
+            local_low_importance = valid_low_importance.to(importance.dtype)
+            local_eos_bonus = eos_bonus
+            local_coverage = coverage
 
         local_delta = delta.to(device=adv.device, dtype=adv.dtype)
         new_advantage = adv + local_delta
@@ -679,9 +698,17 @@ def apply_compression_opd_to_advantages(
             returns[i] = returns[i] + delta.to(device=returns[i].device, dtype=returns[i].dtype)
         importance_chunks.append(local_importance.to(device=adv.device, dtype=torch.float32))
         penalty_chunks.append(local_penalty.to(device=adv.device, dtype=torch.float32))
+        zone_chunks.append(local_zone.to(device=adv.device, dtype=torch.float32))
+        low_importance_chunks.append(local_low_importance.to(device=adv.device, dtype=torch.float32))
+        eos_bonus_chunks.append(local_eos_bonus.to(device=adv.device, dtype=torch.float32))
+        coverage_chunks.append(local_coverage.to(device=adv.device, dtype=torch.float32))
 
     rollout_data["compression_importance"] = importance_chunks
     rollout_data["compression_penalty"] = penalty_chunks
+    rollout_data["compression_zone"] = zone_chunks
+    rollout_data["compression_low_importance"] = low_importance_chunks
+    rollout_data["compression_eos_bonus"] = eos_bonus_chunks
+    rollout_data["compression_coverage"] = coverage_chunks
 
 
 def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) -> None:
@@ -1179,14 +1206,55 @@ def policy_loss_function(
     if "opd_reverse_kl" in batch:
         opd_reverse_kl = torch.cat(batch["opd_reverse_kl"], dim=0)
         reported_loss["opd_reverse_kl"] = sum_of_sample_mean(opd_reverse_kl).clone().detach()
+        reported_loss["opd_reverse_kl_abs"] = sum_of_sample_mean(opd_reverse_kl.abs()).clone().detach()
+
+    if batch.get("teacher_log_probs") is not None:
+        if mpu.get_context_parallel_world_size() > 1:
+            teacher_log_prob_list = [
+                slice_log_prob_with_cp(t, total_length, response_length, args.qkv_format, max_seq_len)
+                for t, total_length, response_length, max_seq_len in zip(
+                    batch["teacher_log_probs"], total_lengths, response_lengths, max_seq_lens, strict=False
+                )
+            ]
+            teacher_log_probs = torch.cat(teacher_log_prob_list, dim=0)
+        else:
+            teacher_log_probs = torch.cat(batch["teacher_log_probs"], dim=0)
+        reported_loss["teacher_logprob"] = sum_of_sample_mean(teacher_log_probs).clone().detach()
+
+    reported_loss["student_logprob"] = sum_of_sample_mean(log_probs).clone().detach()
+    reported_loss["old_logprob"] = sum_of_sample_mean(old_log_probs).clone().detach()
 
     if batch.get("compression_importance") is not None:
         compression_importance = torch.cat(batch["compression_importance"], dim=0)
-        reported_loss["compression_importance"] = sum_of_sample_mean(compression_importance).clone().detach()
+        reported_loss["compression_importance_mean"] = sum_of_sample_mean(compression_importance).clone().detach()
+        reported_loss["compression_importance_max"] = compression_importance.max().clone().detach()
+        reported_loss["compression_importance_min"] = compression_importance.min().clone().detach()
 
     if batch.get("compression_penalty") is not None:
         compression_penalty = torch.cat(batch["compression_penalty"], dim=0)
-        reported_loss["compression_penalty"] = sum_of_sample_mean(compression_penalty).clone().detach()
+        reported_loss["compression_penalty_mean"] = sum_of_sample_mean(compression_penalty).clone().detach()
+        reported_loss["compression_penalty_nonzero_ratio"] = (
+            sum_of_sample_mean((compression_penalty > 0).float()).clone().detach()
+        )
+
+    if batch.get("compression_zone") is not None:
+        compression_zone = torch.cat(batch["compression_zone"], dim=0)
+        reported_loss["compression_zone_ratio"] = sum_of_sample_mean(compression_zone).clone().detach()
+
+    if batch.get("compression_low_importance") is not None:
+        compression_low_importance = torch.cat(batch["compression_low_importance"], dim=0)
+        reported_loss["compression_low_importance_ratio"] = sum_of_sample_mean(compression_low_importance).clone().detach()
+
+    if batch.get("compression_eos_bonus") is not None:
+        compression_eos_bonus = torch.cat(batch["compression_eos_bonus"], dim=0)
+        reported_loss["compression_eos_bonus_mean"] = sum_of_sample_mean(compression_eos_bonus).clone().detach()
+        reported_loss["compression_eos_bonus_nonzero_ratio"] = (
+            sum_of_sample_mean((compression_eos_bonus != 0).float()).clone().detach()
+        )
+
+    if batch.get("compression_coverage") is not None:
+        compression_coverage = torch.cat(batch["compression_coverage"], dim=0)
+        reported_loss["compression_coverage_mean"] = sum_of_sample_mean(compression_coverage).clone().detach()
 
     return loss, reported_loss
 

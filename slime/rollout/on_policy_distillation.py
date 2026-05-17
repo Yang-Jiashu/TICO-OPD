@@ -133,6 +133,16 @@ def post_process_rewards(args, samples: list[Sample], **kwargs):
             sample.metadata = sample.metadata or {}
             sample.metadata["compression_importance_mean"] = float((importance * loss_mask).sum() / torch.clamp_min(loss_mask.sum(), 1.0))
             sample.metadata["compression_low_importance_tokens"] = int(low_importance_compressible.float().sum().item())
+            sample.metadata["compression_low_importance_ratio"] = float(
+                low_importance_compressible.float().sum() / torch.clamp_min(loss_mask.sum(), 1.0)
+            )
+            sample.metadata["compression_zone_ratio"] = float(
+                (compressible & loss_mask.bool()).float().sum() / torch.clamp_min(loss_mask.sum(), 1.0)
+            )
+            sample.metadata["compression_budget"] = int(budget)
+            sample.metadata["compression_coverage_final"] = float(coverage[-1]) if coverage.numel() else 0.0
+            sample.metadata["teacher_logprob_mean"] = float((t_log_probs * loss_mask).sum() / torch.clamp_min(loss_mask.sum(), 1.0))
+            sample.metadata["opd_valid_token_ratio"] = float(loss_mask.sum() / max(sample.response_length, 1))
 
     # Return scalar rewards for GRPO/PPO advantage estimator
     # For pure on-policy distillation, we use 0.0 as the task reward.

@@ -411,6 +411,40 @@ SWANLAB_API_KEY=... \
 bash scripts/run_qwen3_tico_opd.sh
 ```
 
+During training, SwanLab/W&B/TensorBoard can receive the same unified metric stream. Important tracked groups include:
+
+```text
+train/loss
+train/pg_loss
+train/entropy_loss
+train/pg_clipfrac
+train/ppo_kl
+train/opd_reverse_kl
+train/opd_reverse_kl_abs
+train/student_logprob
+train/teacher_logprob
+train/future_kl_*
+train/compression_importance_mean
+train/compression_importance_max
+train/compression_penalty_mean
+train/compression_penalty_nonzero_ratio
+train/compression_zone_ratio
+train/compression_low_importance_ratio
+train/compression_eos_bonus_mean
+train/compression_eos_bonus_nonzero_ratio
+train/compression_coverage_mean
+rollout/response_len/*
+rollout/tico/compression_importance_mean
+rollout/tico/compression_low_importance_ratio
+rollout/tico/compression_zone_ratio
+rollout/tico/teacher_logprob_mean
+rollout/tico/opd_valid_token_ratio
+eval/aime24/*
+eval/aime25/*
+eval/math500/*
+perf/*
+```
+
 TICO-OPD algorithm hyperparameters:
 
 ```bash

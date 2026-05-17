@@ -1195,12 +1195,36 @@ def compute_metrics_from_samples(args, samples):
 
     log_dict = {}
     log_dict |= dict_add_prefix(compute_statistics(response_lengths), "response_len/")
+    log_dict |= _compute_tico_metrics(samples)
     log_dict |= _compute_zero_std_metrics(args, samples)
     log_dict |= _compute_spec_metrics(args, samples)
     log_dict |= _compute_prefix_cache_metrics(args, samples)
     log_dict |= _compute_reward_cat_metrics(args, samples)
     log_dict["repetition_frac"] = np.mean([int(has_repetition(s.response)) for s in samples]).item()
     log_dict["truncated_ratio"] = np.mean([int(s.status == Sample.Status.TRUNCATED) for s in samples]).item()
+    return log_dict
+
+
+def _compute_tico_metrics(samples):
+    metric_keys = [
+        "compression_importance_mean",
+        "compression_low_importance_tokens",
+        "compression_low_importance_ratio",
+        "compression_zone_ratio",
+        "compression_budget",
+        "compression_coverage_final",
+        "teacher_logprob_mean",
+        "opd_valid_token_ratio",
+    ]
+    log_dict = {}
+    for key in metric_keys:
+        values = [
+            sample.metadata[key]
+            for sample in samples
+            if sample.metadata is not None and key in sample.metadata
+        ]
+        if values:
+            log_dict[f"tico/{key}"] = float(np.mean(values))
     return log_dict
 
 
