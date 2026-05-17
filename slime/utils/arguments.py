@@ -1259,6 +1259,29 @@ def get_slime_extra_args_provider(add_custom_arguments=None):
 
             return parser
 
+        # swanlab
+        def add_swanlab_arguments(parser):
+            parser.add_argument("--use-swanlab", action="store_true", default=False)
+            parser.add_argument(
+                "--swanlab-mode",
+                type=str,
+                default=None,
+                choices=["cloud", "local", "offline", "disabled"],
+                help="SwanLab mode. Use cloud for online tracking, local/offline for local tracking, or disabled.",
+            )
+            parser.add_argument("--swanlab-project", type=str, default=None)
+            parser.add_argument("--swanlab-workspace", type=str, default=None)
+            parser.add_argument("--swanlab-experiment-name", type=str, default=None)
+            parser.add_argument("--swanlab-group", type=str, default=None)
+            parser.add_argument("--swanlab-tags", type=str, default=None, help="Comma-separated SwanLab tags.")
+            parser.add_argument("--swanlab-logdir", type=str, default=None)
+            parser.add_argument("--swanlab-api-key", type=str, default=None)
+            parser.add_argument("--swanlab-host", type=str, default=None)
+            parser.add_argument("--swanlab-run-id", type=str, default=None)
+            parser.add_argument("--swanlab-resume", type=str, default=None, choices=["must", "allow", "never"])
+            parser.add_argument("--swanlab-public", action=argparse.BooleanOptionalAction, default=None)
+            return parser
+
         # debug
         def add_debug_arguments(parser):
             parser.add_argument(
@@ -1530,6 +1553,7 @@ def get_slime_extra_args_provider(add_custom_arguments=None):
         parser = add_on_policy_distillation_arguments(parser)
         parser = add_wandb_arguments(parser)
         parser = add_tensorboard_arguments(parser)
+        parser = add_swanlab_arguments(parser)
         parser = add_router_arguments(parser)
         parser = add_debug_arguments(parser)
         parser = add_network_arguments(parser)

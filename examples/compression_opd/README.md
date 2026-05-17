@@ -382,6 +382,35 @@ ADAM_BETA2=0.98
 SGLANG_MEM_FRACTION_STATIC=0.7
 ```
 
+SwanLab tracking is optional. Install it only when you want to log experiments there:
+
+```bash
+pip install swanlab
+```
+
+Then enable it in YAML:
+
+```yaml
+tracking:
+  use_swanlab: true
+  swanlab_mode: cloud
+  swanlab_project: TICO-OPD
+  swanlab_workspace: your-workspace
+  swanlab_experiment_name: qwen3-4B-teacher-32B
+  swanlab_group: qwen3-tico-opd
+  swanlab_tags: tico-opd,qwen3
+```
+
+or with environment variables:
+
+```bash
+USE_SWANLAB=true \
+SWANLAB_PROJECT=TICO-OPD \
+SWANLAB_WORKSPACE=your-workspace \
+SWANLAB_API_KEY=... \
+bash scripts/run_qwen3_tico_opd.sh
+```
+
 TICO-OPD algorithm hyperparameters:
 
 ```bash

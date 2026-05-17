@@ -68,6 +68,21 @@ training:
   adam_beta1: 0.9
   adam_beta2: 0.98
 
+tracking:
+  use_swanlab: false
+  swanlab_mode: cloud
+  swanlab_project: TICO-OPD
+  swanlab_workspace: ""
+  swanlab_experiment_name: qwen3-4B-teacher-32B
+  swanlab_group: qwen3-tico-opd
+  swanlab_tags: tico-opd,qwen3
+  swanlab_logdir: ""
+  swanlab_api_key: ""
+  swanlab_host: ""
+  swanlab_run_id: ""
+  swanlab_resume: ""
+  swanlab_public:
+
 tico:
   opd_kl_coef: 1.0
   policy_loss_type: future_kl

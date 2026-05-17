@@ -75,6 +75,20 @@ EVAL_TOP_K=${EVAL_TOP_K:-20}
 
 SGLANG_MEM_FRACTION_STATIC=${SGLANG_MEM_FRACTION_STATIC:-0.7}
 
+USE_SWANLAB=${USE_SWANLAB:-false}
+SWANLAB_MODE=${SWANLAB_MODE:-cloud}
+SWANLAB_PROJECT=${SWANLAB_PROJECT:-TICO-OPD}
+SWANLAB_WORKSPACE=${SWANLAB_WORKSPACE:-}
+SWANLAB_EXPERIMENT_NAME=${SWANLAB_EXPERIMENT_NAME:-qwen3-${STUDENT_SIZE}-teacher-${TEACHER_SIZE}}
+SWANLAB_GROUP=${SWANLAB_GROUP:-qwen3-tico-opd}
+SWANLAB_TAGS=${SWANLAB_TAGS:-tico-opd,qwen3}
+SWANLAB_LOGDIR=${SWANLAB_LOGDIR:-}
+SWANLAB_API_KEY=${SWANLAB_API_KEY:-}
+SWANLAB_HOST=${SWANLAB_HOST:-}
+SWANLAB_RUN_ID=${SWANLAB_RUN_ID:-}
+SWANLAB_RESUME=${SWANLAB_RESUME:-}
+SWANLAB_PUBLIC=${SWANLAB_PUBLIC:-}
+
 OPD_KL_COEF=${OPD_KL_COEF:-1.0}
 POLICY_LOSS_TYPE=${POLICY_LOSS_TYPE:-future_kl}
 FUTURE_KL_DECAY_RATE=${FUTURE_KL_DECAY_RATE:-32}
@@ -115,6 +129,7 @@ echo "  rollout: num=${NUM_ROLLOUT}, batch=${ROLLOUT_BATCH_SIZE}, n=${N_SAMPLES_
 echo "  eval: interval=${EVAL_INTERVAL}, n=${N_SAMPLES_PER_EVAL_PROMPT}, max_len=${EVAL_MAX_RESPONSE_LEN}, temp=${EVAL_TEMPERATURE}, top_p=${EVAL_TOP_P}, top_k=${EVAL_TOP_K}"
 echo "  policy loss: ${POLICY_LOSS_TYPE}"
 echo "  compression OPD: ${USE_COMPRESSION_OPD}"
+echo "  swanlab: ${USE_SWANLAB}"
 
 EXTRA_TICO_ARGS=()
 if [[ "${FUTURE_KL_AVERAGE}" == "true" ]]; then
@@ -133,6 +148,41 @@ if [[ "${COMPRESSION_IMPORTANCE_AVERAGE}" == "true" ]]; then
 fi
 if [[ "${COMPRESSION_MASK_LOW_IMPORTANCE_TOKENS}" == "true" ]]; then
   EXTRA_TICO_ARGS+=(--compression-mask-low-importance-tokens)
+fi
+
+EXTRA_TRACKING_ARGS=()
+if [[ "${USE_SWANLAB}" == "true" ]]; then
+  EXTRA_TRACKING_ARGS+=(--use-swanlab)
+  EXTRA_TRACKING_ARGS+=(--swanlab-mode "${SWANLAB_MODE}")
+  EXTRA_TRACKING_ARGS+=(--swanlab-project "${SWANLAB_PROJECT}")
+  EXTRA_TRACKING_ARGS+=(--swanlab-experiment-name "${SWANLAB_EXPERIMENT_NAME}")
+  EXTRA_TRACKING_ARGS+=(--swanlab-group "${SWANLAB_GROUP}")
+  EXTRA_TRACKING_ARGS+=(--swanlab-tags "${SWANLAB_TAGS}")
+  if [[ -n "${SWANLAB_WORKSPACE}" ]]; then
+    EXTRA_TRACKING_ARGS+=(--swanlab-workspace "${SWANLAB_WORKSPACE}")
+  fi
+  if [[ -n "${SWANLAB_LOGDIR}" ]]; then
+    EXTRA_TRACKING_ARGS+=(--swanlab-logdir "${SWANLAB_LOGDIR}")
+  fi
+  if [[ -n "${SWANLAB_API_KEY}" ]]; then
+    EXTRA_TRACKING_ARGS+=(--swanlab-api-key "${SWANLAB_API_KEY}")
+  fi
+  if [[ -n "${SWANLAB_HOST}" ]]; then
+    EXTRA_TRACKING_ARGS+=(--swanlab-host "${SWANLAB_HOST}")
+  fi
+  if [[ -n "${SWANLAB_RUN_ID}" ]]; then
+    EXTRA_TRACKING_ARGS+=(--swanlab-run-id "${SWANLAB_RUN_ID}")
+  fi
+  if [[ -n "${SWANLAB_RESUME}" ]]; then
+    EXTRA_TRACKING_ARGS+=(--swanlab-resume "${SWANLAB_RESUME}")
+  fi
+  if [[ -n "${SWANLAB_PUBLIC}" ]]; then
+    if [[ "${SWANLAB_PUBLIC}" == "true" ]]; then
+      EXTRA_TRACKING_ARGS+=(--swanlab-public)
+    else
+      EXTRA_TRACKING_ARGS+=(--no-swanlab-public)
+    fi
+  fi
 fi
 
 if [[ "${USE_EXTERNAL_TEACHER}" == "true" ]]; then
@@ -250,4 +300,5 @@ ray job submit --address="http://127.0.0.1:8265" \
   --attention-backend flash \
   --custom-rm-path slime.rollout.on_policy_distillation.reward_func \
   --custom-reward-post-process-path slime.rollout.on_policy_distillation.post_process_rewards \
+  "${EXTRA_TRACKING_ARGS[@]}" \
   --rm-url "${TEACHER_URL}"
