@@ -46,6 +46,32 @@ TEACHER_URL=${TEACHER_URL:-http://${TEACHER_IP}:${TEACHER_PORT}/generate}
 TEACHER_CUDA_VISIBLE_DEVICES=${TEACHER_CUDA_VISIBLE_DEVICES:-}
 TEACHER_MEM_FRACTION_STATIC=${TEACHER_MEM_FRACTION_STATIC:-0.6}
 
+OPD_KL_COEF=${OPD_KL_COEF:-1.0}
+POLICY_LOSS_TYPE=${POLICY_LOSS_TYPE:-future_kl}
+FUTURE_KL_DECAY_RATE=${FUTURE_KL_DECAY_RATE:-32}
+FUTURE_KL_START=${FUTURE_KL_START:-include_current}
+FUTURE_KL_WINDOW=${FUTURE_KL_WINDOW:--1}
+FUTURE_KL_CLIP_RATIO=${FUTURE_KL_CLIP_RATIO:-0.2}
+FUTURE_KL_SAFETY_THRESHOLD=${FUTURE_KL_SAFETY_THRESHOLD:-10.0}
+FUTURE_KL_AVERAGE=${FUTURE_KL_AVERAGE:-false}
+FUTURE_KL_CLIP_HIGH_ONLY=${FUTURE_KL_CLIP_HIGH_ONLY:-true}
+
+USE_COMPRESSION_OPD=${USE_COMPRESSION_OPD:-true}
+COMPRESSION_LENGTH_BUDGET=${COMPRESSION_LENGTH_BUDGET:--1}
+COMPRESSION_LENGTH_BUDGET_RATIO=${COMPRESSION_LENGTH_BUDGET_RATIO:-0.75}
+COMPRESSION_ADVANTAGE_COEF=${COMPRESSION_ADVANTAGE_COEF:-0.02}
+COMPRESSION_EOS_COEF=${COMPRESSION_EOS_COEF:-0.01}
+COMPRESSION_COVERAGE_THRESHOLD=${COMPRESSION_COVERAGE_THRESHOLD:-0.90}
+COMPRESSION_MIN_RESPONSE_LEN=${COMPRESSION_MIN_RESPONSE_LEN:-0}
+COMPRESSION_IMPORTANCE_DECAY_RATE=${COMPRESSION_IMPORTANCE_DECAY_RATE:-32}
+COMPRESSION_IMPORTANCE_START=${COMPRESSION_IMPORTANCE_START:-include_current}
+COMPRESSION_IMPORTANCE_WINDOW=${COMPRESSION_IMPORTANCE_WINDOW:--1}
+COMPRESSION_IMPORTANCE_AVERAGE=${COMPRESSION_IMPORTANCE_AVERAGE:-false}
+COMPRESSION_IMPORTANCE_TEMPERATURE=${COMPRESSION_IMPORTANCE_TEMPERATURE:-1.0}
+COMPRESSION_REWARD_COEF=${COMPRESSION_REWARD_COEF:-0.0}
+COMPRESSION_MASK_LOW_IMPORTANCE_TOKENS=${COMPRESSION_MASK_LOW_IMPORTANCE_TOKENS:-false}
+COMPRESSION_LOW_IMPORTANCE_THRESHOLD=${COMPRESSION_LOW_IMPORTANCE_THRESHOLD:-0.2}
+
 MODEL_ARGS_FILE="$(qwen3_slime_model_args_file "${STUDENT_SIZE}")"
 source "${SLIME_DIR}/scripts/models/${MODEL_ARGS_FILE}"
 
@@ -56,6 +82,27 @@ echo "  student TP: ${STUDENT_TP}"
 echo "  teacher TP: ${TEACHER_TP}"
 echo "  teacher URL: ${TEACHER_URL}"
 echo "  train data: ${TRAIN_DATA}"
+echo "  policy loss: ${POLICY_LOSS_TYPE}"
+echo "  compression OPD: ${USE_COMPRESSION_OPD}"
+
+EXTRA_TICO_ARGS=()
+if [[ "${FUTURE_KL_AVERAGE}" == "true" ]]; then
+  EXTRA_TICO_ARGS+=(--future-kl-average)
+fi
+if [[ "${FUTURE_KL_CLIP_HIGH_ONLY}" == "true" ]]; then
+  EXTRA_TICO_ARGS+=(--future-kl-clip-high-only)
+else
+  EXTRA_TICO_ARGS+=(--no-future-kl-clip-high-only)
+fi
+if [[ "${USE_COMPRESSION_OPD}" == "true" ]]; then
+  EXTRA_TICO_ARGS+=(--use-compression-opd)
+fi
+if [[ "${COMPRESSION_IMPORTANCE_AVERAGE}" == "true" ]]; then
+  EXTRA_TICO_ARGS+=(--compression-importance-average)
+fi
+if [[ "${COMPRESSION_MASK_LOW_IMPORTANCE_TOKENS}" == "true" ]]; then
+  EXTRA_TICO_ARGS+=(--compression-mask-low-importance-tokens)
+fi
 
 if [[ "${USE_EXTERNAL_TEACHER}" == "true" ]]; then
   echo "Using external teacher server: ${TEACHER_URL}"
@@ -128,22 +175,27 @@ ray job submit --address="http://127.0.0.1:8265" \
   --advantage-estimator grpo \
   --use-opd \
   --opd-type sglang \
-  --opd-kl-coef 1.0 \
-  --policy-loss-type future_kl \
-  --future-kl-decay-rate 32 \
-  --future-kl-start include_current \
-  --future-kl-window -1 \
-  --future-kl-clip-ratio 0.2 \
-  --future-kl-clip-high-only \
-  --future-kl-safety-threshold 10.0 \
+  --opd-kl-coef "${OPD_KL_COEF}" \
+  --policy-loss-type "${POLICY_LOSS_TYPE}" \
+  --future-kl-decay-rate "${FUTURE_KL_DECAY_RATE}" \
+  --future-kl-start "${FUTURE_KL_START}" \
+  --future-kl-window "${FUTURE_KL_WINDOW}" \
+  --future-kl-clip-ratio "${FUTURE_KL_CLIP_RATIO}" \
+  --future-kl-safety-threshold "${FUTURE_KL_SAFETY_THRESHOLD}" \
   --eps-clip-c 3.0 \
-  --use-compression-opd \
-  --compression-length-budget-ratio 0.75 \
-  --compression-advantage-coef 0.02 \
-  --compression-eos-coef 0.01 \
-  --compression-coverage-threshold 0.90 \
-  --compression-importance-decay-rate 32 \
-  --compression-reward-coef 0.0 \
+  --compression-length-budget "${COMPRESSION_LENGTH_BUDGET}" \
+  --compression-length-budget-ratio "${COMPRESSION_LENGTH_BUDGET_RATIO}" \
+  --compression-advantage-coef "${COMPRESSION_ADVANTAGE_COEF}" \
+  --compression-eos-coef "${COMPRESSION_EOS_COEF}" \
+  --compression-coverage-threshold "${COMPRESSION_COVERAGE_THRESHOLD}" \
+  --compression-min-response-len "${COMPRESSION_MIN_RESPONSE_LEN}" \
+  --compression-importance-decay-rate "${COMPRESSION_IMPORTANCE_DECAY_RATE}" \
+  --compression-importance-start "${COMPRESSION_IMPORTANCE_START}" \
+  --compression-importance-window "${COMPRESSION_IMPORTANCE_WINDOW}" \
+  --compression-importance-temperature "${COMPRESSION_IMPORTANCE_TEMPERATURE}" \
+  --compression-reward-coef "${COMPRESSION_REWARD_COEF}" \
+  --compression-low-importance-threshold "${COMPRESSION_LOW_IMPORTANCE_THRESHOLD}" \
+  "${EXTRA_TICO_ARGS[@]}" \
   --use-kl-loss \
   --kl-loss-coef 0.00 \
   --kl-loss-type low_var_kl \
