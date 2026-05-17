@@ -25,6 +25,7 @@ BASE_MODEL=${BASE_MODEL:-/root/Qwen3-${STUDENT_SIZE}}
 TEACHER_MODEL=${TEACHER_MODEL:-/root/Qwen3-${TEACHER_SIZE}}
 REF_LOAD=${REF_LOAD:-/root/Qwen3-${STUDENT_SIZE}_torch_dist}
 SAVE_DIR=${SAVE_DIR:-/root/checkpoints/qwen3-${STUDENT_SIZE}-tico-opd}
+SAVE_INTERVAL=${SAVE_INTERVAL:-20}
 
 TRAIN_DATA=${TRAIN_DATA:-${SLIME_DIR}/data/math/dapo17k.jsonl}
 AIME24=${AIME24:-${SLIME_DIR}/data/math/aime24.jsonl}
@@ -45,6 +46,34 @@ USE_EXTERNAL_TEACHER=${USE_EXTERNAL_TEACHER:-false}
 TEACHER_URL=${TEACHER_URL:-http://${TEACHER_IP}:${TEACHER_PORT}/generate}
 TEACHER_CUDA_VISIBLE_DEVICES=${TEACHER_CUDA_VISIBLE_DEVICES:-}
 TEACHER_MEM_FRACTION_STATIC=${TEACHER_MEM_FRACTION_STATIC:-0.6}
+TEACHER_CHUNKED_PREFILL_SIZE=${TEACHER_CHUNKED_PREFILL_SIZE:-8192}
+
+NUM_ROLLOUT=${NUM_ROLLOUT:-3000}
+ROLLOUT_BATCH_SIZE=${ROLLOUT_BATCH_SIZE:-32}
+N_SAMPLES_PER_PROMPT=${N_SAMPLES_PER_PROMPT:-8}
+ROLLOUT_MAX_RESPONSE_LEN=${ROLLOUT_MAX_RESPONSE_LEN:-8192}
+ROLLOUT_TEMPERATURE=${ROLLOUT_TEMPERATURE:-0.6}
+ROLLOUT_TOP_P=${ROLLOUT_TOP_P:-1.0}
+ROLLOUT_TOP_K=${ROLLOUT_TOP_K:--1}
+
+GLOBAL_BATCH_SIZE=${GLOBAL_BATCH_SIZE:-256}
+ADVANTAGE_ESTIMATOR=${ADVANTAGE_ESTIMATOR:-grpo}
+EPS_CLIP_C=${EPS_CLIP_C:-3.0}
+OPTIMIZER=${OPTIMIZER:-adam}
+LR=${LR:-1e-6}
+LR_DECAY_STYLE=${LR_DECAY_STYLE:-constant}
+WEIGHT_DECAY=${WEIGHT_DECAY:-0.1}
+ADAM_BETA1=${ADAM_BETA1:-0.9}
+ADAM_BETA2=${ADAM_BETA2:-0.98}
+
+EVAL_INTERVAL=${EVAL_INTERVAL:-20}
+N_SAMPLES_PER_EVAL_PROMPT=${N_SAMPLES_PER_EVAL_PROMPT:-16}
+EVAL_MAX_RESPONSE_LEN=${EVAL_MAX_RESPONSE_LEN:-16384}
+EVAL_TEMPERATURE=${EVAL_TEMPERATURE:-0.6}
+EVAL_TOP_P=${EVAL_TOP_P:-0.95}
+EVAL_TOP_K=${EVAL_TOP_K:-20}
+
+SGLANG_MEM_FRACTION_STATIC=${SGLANG_MEM_FRACTION_STATIC:-0.7}
 
 OPD_KL_COEF=${OPD_KL_COEF:-1.0}
 POLICY_LOSS_TYPE=${POLICY_LOSS_TYPE:-future_kl}
@@ -82,6 +111,8 @@ echo "  student TP: ${STUDENT_TP}"
 echo "  teacher TP: ${TEACHER_TP}"
 echo "  teacher URL: ${TEACHER_URL}"
 echo "  train data: ${TRAIN_DATA}"
+echo "  rollout: num=${NUM_ROLLOUT}, batch=${ROLLOUT_BATCH_SIZE}, n=${N_SAMPLES_PER_PROMPT}, max_len=${ROLLOUT_MAX_RESPONSE_LEN}, temp=${ROLLOUT_TEMPERATURE}, top_p=${ROLLOUT_TOP_P}, top_k=${ROLLOUT_TOP_K}"
+echo "  eval: interval=${EVAL_INTERVAL}, n=${N_SAMPLES_PER_EVAL_PROMPT}, max_len=${EVAL_MAX_RESPONSE_LEN}, temp=${EVAL_TEMPERATURE}, top_p=${EVAL_TOP_P}, top_k=${EVAL_TOP_K}"
 echo "  policy loss: ${POLICY_LOSS_TYPE}"
 echo "  compression OPD: ${USE_COMPRESSION_OPD}"
 
@@ -121,7 +152,7 @@ else
     --host 0.0.0.0 \
     --port "${TEACHER_PORT}" \
     --tp "${TEACHER_TP}" \
-    --chunked-prefill-size 8192 \
+    --chunked-prefill-size "${TEACHER_CHUNKED_PREFILL_SIZE}" \
     --mem-fraction-static "${TEACHER_MEM_FRACTION_STATIC}" &
 
   until curl -sf "http://${TEACHER_IP}:${TEACHER_PORT}/health_generate" >/dev/null; do
@@ -145,24 +176,28 @@ ray job submit --address="http://127.0.0.1:8265" \
   --ref-load "${REF_LOAD}" \
   --load "${SAVE_DIR}" \
   --save "${SAVE_DIR}" \
-  --save-interval 20 \
+  --save-interval "${SAVE_INTERVAL}" \
   --prompt-data "${TRAIN_DATA}" \
   --input-key prompt \
   --label-key label \
   --apply-chat-template \
   --rollout-shuffle \
-  --num-rollout 3000 \
-  --rollout-batch-size 32 \
-  --n-samples-per-prompt 8 \
-  --rollout-max-response-len 8192 \
-  --rollout-temperature 0.6 \
-  --global-batch-size 256 \
+  --num-rollout "${NUM_ROLLOUT}" \
+  --rollout-batch-size "${ROLLOUT_BATCH_SIZE}" \
+  --n-samples-per-prompt "${N_SAMPLES_PER_PROMPT}" \
+  --rollout-max-response-len "${ROLLOUT_MAX_RESPONSE_LEN}" \
+  --rollout-temperature "${ROLLOUT_TEMPERATURE}" \
+  --rollout-top-p "${ROLLOUT_TOP_P}" \
+  --rollout-top-k "${ROLLOUT_TOP_K}" \
+  --global-batch-size "${GLOBAL_BATCH_SIZE}" \
   --balance-data \
-  --eval-interval 20 \
+  --eval-interval "${EVAL_INTERVAL}" \
   --eval-prompt-data aime24 "${AIME24}" aime25 "${AIME25}" math500 "${MATH500}" \
-  --n-samples-per-eval-prompt 16 \
-  --eval-max-response-len 16384 \
-  --eval-top-p 0.95 \
+  --n-samples-per-eval-prompt "${N_SAMPLES_PER_EVAL_PROMPT}" \
+  --eval-max-response-len "${EVAL_MAX_RESPONSE_LEN}" \
+  --eval-temperature "${EVAL_TEMPERATURE}" \
+  --eval-top-p "${EVAL_TOP_P}" \
+  --eval-top-k "${EVAL_TOP_K}" \
   --tensor-model-parallel-size "${STUDENT_TP}" \
   --sequence-parallel \
   --pipeline-model-parallel-size 1 \
@@ -172,7 +207,7 @@ ray job submit --address="http://127.0.0.1:8265" \
   --recompute-num-layers 1 \
   --use-dynamic-batch-size \
   --max-tokens-per-gpu "${MAX_TOKENS_PER_GPU}" \
-  --advantage-estimator grpo \
+  --advantage-estimator "${ADVANTAGE_ESTIMATOR}" \
   --use-opd \
   --opd-type sglang \
   --opd-kl-coef "${OPD_KL_COEF}" \
@@ -182,7 +217,7 @@ ray job submit --address="http://127.0.0.1:8265" \
   --future-kl-window "${FUTURE_KL_WINDOW}" \
   --future-kl-clip-ratio "${FUTURE_KL_CLIP_RATIO}" \
   --future-kl-safety-threshold "${FUTURE_KL_SAFETY_THRESHOLD}" \
-  --eps-clip-c 3.0 \
+  --eps-clip-c "${EPS_CLIP_C}" \
   --compression-length-budget "${COMPRESSION_LENGTH_BUDGET}" \
   --compression-length-budget-ratio "${COMPRESSION_LENGTH_BUDGET_RATIO}" \
   --compression-advantage-coef "${COMPRESSION_ADVANTAGE_COEF}" \
@@ -200,14 +235,14 @@ ray job submit --address="http://127.0.0.1:8265" \
   --kl-loss-coef 0.00 \
   --kl-loss-type low_var_kl \
   --entropy-coef 0.00 \
-  --optimizer adam \
-  --lr 1e-6 \
-  --lr-decay-style constant \
-  --weight-decay 0.1 \
-  --adam-beta1 0.9 \
-  --adam-beta2 0.98 \
+  --optimizer "${OPTIMIZER}" \
+  --lr "${LR}" \
+  --lr-decay-style "${LR_DECAY_STYLE}" \
+  --weight-decay "${WEIGHT_DECAY}" \
+  --adam-beta1 "${ADAM_BETA1}" \
+  --adam-beta2 "${ADAM_BETA2}" \
   --rollout-num-gpus-per-engine "${ROLLOUT_GPUS_PER_ENGINE}" \
-  --sglang-mem-fraction-static 0.7 \
+  --sglang-mem-fraction-static "${SGLANG_MEM_FRACTION_STATIC}" \
   --attention-dropout 0.0 \
   --hidden-dropout 0.0 \
   --accumulate-allreduce-grads-in-fp32 \

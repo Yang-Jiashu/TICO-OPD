@@ -1,0 +1,96 @@
+# Default Qwen3 TICO-OPD experiment.
+# Run with:
+#   python3 scripts/run_qwen3_tico_opd_from_yaml.py --config configs/qwen3/tico_opd_4b_32b.yaml
+
+paths:
+  slime_dir: .
+  megatron_dir: /root/Megatron-LM
+  save_dir: /root/checkpoints/qwen3-4B-tico-opd
+
+models:
+  student_size: 4B
+  teacher_size: 32B
+  base_model: /root/Qwen3-4B
+  teacher_model: /root/Qwen3-32B
+  ref_load: /root/Qwen3-4B_torch_dist
+
+data:
+  train_data: data/math/dapo17k.jsonl
+  aime24: data/math/aime24.jsonl
+  aime25: data/math/aime25.jsonl
+  math500: data/math/math500.jsonl
+
+resources:
+  num_gpus: 8
+  actor_num_gpus: 8
+  rollout_num_gpus: 8
+  student_tp: 1
+  teacher_tp: 2
+  rollout_gpus_per_engine: 1
+  max_tokens_per_gpu: 9216
+  teacher_cuda_visible_devices: ""
+
+teacher_server:
+  use_external_teacher: false
+  teacher_ip: 127.0.0.1
+  teacher_port: 13141
+  teacher_url: http://127.0.0.1:13141/generate
+  teacher_mem_fraction_static: 0.6
+  teacher_chunked_prefill_size: 8192
+
+rollout:
+  num_rollout: 3000
+  rollout_batch_size: 32
+  n_samples_per_prompt: 8
+  rollout_max_response_len: 8192
+  rollout_temperature: 0.6
+  rollout_top_p: 1.0
+  rollout_top_k: -1
+  sglang_mem_fraction_static: 0.7
+
+eval:
+  eval_interval: 20
+  n_samples_per_eval_prompt: 16
+  eval_max_response_len: 16384
+  eval_temperature: 0.6
+  eval_top_p: 0.95
+  eval_top_k: 20
+
+training:
+  save_interval: 20
+  global_batch_size: 256
+  advantage_estimator: grpo
+  eps_clip_c: 3.0
+  optimizer: adam
+  lr: 1.0e-6
+  lr_decay_style: constant
+  weight_decay: 0.1
+  adam_beta1: 0.9
+  adam_beta2: 0.98
+
+tico:
+  opd_kl_coef: 1.0
+  policy_loss_type: future_kl
+  future_kl_decay_rate: 32
+  future_kl_start: include_current
+  future_kl_window: -1
+  future_kl_average: false
+  future_kl_clip_ratio: 0.2
+  future_kl_clip_high_only: true
+  future_kl_safety_threshold: 10.0
+
+  use_compression_opd: true
+  compression_length_budget: -1
+  compression_length_budget_ratio: 0.75
+  compression_advantage_coef: 0.02
+  compression_eos_coef: 0.01
+  compression_coverage_threshold: 0.90
+  compression_min_response_len: 0
+  compression_importance_decay_rate: 32
+  compression_importance_start: include_current
+  compression_importance_window: -1
+  compression_importance_average: false
+  compression_importance_temperature: 1.0
+  compression_reward_coef: 0.0
+  compression_mask_low_importance_tokens: false
+  compression_low_importance_threshold: 0.2

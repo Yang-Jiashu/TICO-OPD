@@ -309,6 +309,23 @@ STUDENT_SIZE=4B TEACHER_SIZE=32B bash scripts/run_qwen3_tico_opd.sh
 STUDENT_SIZE=8B TEACHER_SIZE=235B-A22B TEACHER_TP=8 bash scripts/run_qwen3_tico_opd.sh
 ```
 
+For reproducible runs, keep the full experiment in one YAML file:
+
+```bash
+python3 scripts/run_qwen3_tico_opd_from_yaml.py \
+  --config configs/qwen3/tico_opd_4b_32b.yaml
+```
+
+Preview what the YAML exports without launching Ray/SGLang:
+
+```bash
+python3 scripts/run_qwen3_tico_opd_from_yaml.py \
+  --config configs/qwen3/tico_opd_4b_32b.yaml \
+  --dry-run
+```
+
+The YAML groups model paths, teacher server settings, rollout inference hyperparameters, eval inference hyperparameters, optimizer settings, GPU layout, and TICO-OPD algorithm knobs.
+
 Important environment variables:
 
 ```bash
@@ -328,6 +345,41 @@ STUDENT_TP=auto
 TEACHER_TP=auto
 TEACHER_CUDA_VISIBLE_DEVICES=0,1
 USE_EXTERNAL_TEACHER=false
+```
+
+Rollout and eval inference hyperparameters:
+
+```bash
+NUM_ROLLOUT=3000
+ROLLOUT_BATCH_SIZE=32
+N_SAMPLES_PER_PROMPT=8
+ROLLOUT_MAX_RESPONSE_LEN=8192
+ROLLOUT_TEMPERATURE=0.6
+ROLLOUT_TOP_P=1.0
+ROLLOUT_TOP_K=-1
+
+EVAL_INTERVAL=20
+N_SAMPLES_PER_EVAL_PROMPT=16
+EVAL_MAX_RESPONSE_LEN=16384
+EVAL_TEMPERATURE=0.6
+EVAL_TOP_P=0.95
+EVAL_TOP_K=20
+```
+
+Training hyperparameters:
+
+```bash
+SAVE_INTERVAL=20
+GLOBAL_BATCH_SIZE=256
+ADVANTAGE_ESTIMATOR=grpo
+EPS_CLIP_C=3.0
+OPTIMIZER=adam
+LR=1e-6
+LR_DECAY_STYLE=constant
+WEIGHT_DECAY=0.1
+ADAM_BETA1=0.9
+ADAM_BETA2=0.98
+SGLANG_MEM_FRACTION_STATIC=0.7
 ```
 
 TICO-OPD algorithm hyperparameters:
