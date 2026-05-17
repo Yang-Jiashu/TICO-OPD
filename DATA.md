@@ -13,7 +13,7 @@ For `slime` training, each line should contain at least:
 The launcher uses:
 
 ```bash
---prompt-data /root/data/math/dapo17k.jsonl
+--prompt-data data/math/dapo17k.jsonl
 --input-key prompt
 --label-key label
 ```
@@ -56,9 +56,9 @@ source_dataset
 The same conversion script can prepare AIME24, AIME25, and MATH500:
 
 ```bash
-python3 scripts/prepare_math_data.py --name aime24 --out-dir /root/data/math
-python3 scripts/prepare_math_data.py --name aime25 --out-dir /root/data/math
-python3 scripts/prepare_math_data.py --name math500 --out-dir /root/data/math
+python3 scripts/prepare_math_data.py --name aime24 --out-dir data/math --prefer-http
+python3 scripts/prepare_math_data.py --name aime25 --out-dir data/math --prefer-http
+python3 scripts/prepare_math_data.py --name math500 --out-dir data/math --prefer-http
 ```
 
 or use the checked-in files directly:
