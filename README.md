@@ -171,29 +171,168 @@ Main switches:
 
 ## Quick Start
 
-Start conservative. This tests trajectory weighting and gentle compression without rollout-side masking:
+This path is for a first reproducible Qwen3 math run. It assumes you already have a CUDA environment that can run `slime`, `Megatron-LM`, Ray, and SGLang.
+
+### 1. Clone and install
 
 ```bash
---use-opd \
---opd-type sglang \
---opd-kl-coef 1.0 \
---custom-rm-path slime.rollout.on_policy_distillation.reward_func \
---custom-reward-post-process-path slime.rollout.on_policy_distillation.post_process_rewards \
---policy-loss-type future_kl \
---future-kl-decay-rate 32 \
---future-kl-start include_current \
---future-kl-window -1 \
---future-kl-clip-ratio 0.2 \
---future-kl-clip-high-only \
---future-kl-safety-threshold 10.0 \
---eps-clip-c 3.0 \
---use-compression-opd \
---compression-length-budget-ratio 0.75 \
---compression-advantage-coef 0.02 \
---compression-eos-coef 0.01 \
---compression-coverage-threshold 0.90 \
---compression-importance-decay-rate 32 \
---compression-reward-coef 0.0
+git clone https://github.com/Yang-Jiashu/TICO-OPD.git
+cd TICO-OPD
+
+pip install -r requirements.txt
+pip install pyyaml
+```
+
+SwanLab is optional:
+
+```bash
+pip install swanlab
+```
+
+### 2. Check bundled data
+
+The repo already includes training and evaluation jsonl files:
+
+```bash
+wc -l data/math/*.jsonl
+```
+
+Expected counts:
+
+```text
+aime24.jsonl       30
+aime25.jsonl       30
+math500.jsonl      500
+dapo17k.jsonl      17000
+```
+
+Each row uses:
+
+```json
+{"prompt": "...", "label": "...", "source": "...", "source_dataset": "...", "row_idx": 0}
+```
+
+### 3. Edit one YAML config
+
+Start from:
+
+```text
+configs/qwen3/tico_opd_4b_32b.yaml
+```
+
+At minimum, set the model and framework paths:
+
+```yaml
+paths:
+  slime_dir: .
+  megatron_dir: /root/Megatron-LM
+  save_dir: /root/checkpoints/qwen3-4B-tico-opd
+
+models:
+  student_size: 4B
+  teacher_size: 32B
+  base_model: /root/Qwen3-4B
+  teacher_model: /root/Qwen3-32B
+  ref_load: /root/Qwen3-4B_torch_dist
+```
+
+Set GPU layout:
+
+```yaml
+resources:
+  num_gpus: 8
+  actor_num_gpus: 8
+  rollout_num_gpus: 8
+  student_tp: 1
+  teacher_tp: 2
+  teacher_cuda_visible_devices: "0,1"
+```
+
+If the teacher runs on another machine, use:
+
+```yaml
+teacher_server:
+  use_external_teacher: true
+  teacher_url: http://teacher-host:13141/generate
+```
+
+### 4. Dry-run the config
+
+Before launching Ray/SGLang, check what the YAML expands to:
+
+```bash
+python3 scripts/run_qwen3_tico_opd_from_yaml.py \
+  --config configs/qwen3/tico_opd_4b_32b.yaml \
+  --dry-run
+```
+
+This prints all exported model, data, GPU, rollout, eval, training, tracking, and TICO hyperparameters.
+
+### 5. Run training
+
+```bash
+python3 scripts/run_qwen3_tico_opd_from_yaml.py \
+  --config configs/qwen3/tico_opd_4b_32b.yaml
+```
+
+The default YAML enables:
+
+```text
+OPD teacher logprob distillation
+Future-KL trajectory credit assignment
+compression-aware advantage shaping
+AIME24/AIME25/MATH500 periodic eval
+```
+
+### 6. Run standalone eval
+
+Launch a Qwen3 endpoint:
+
+```bash
+MODEL_SIZE=4B \
+CUDA_VISIBLE_DEVICES=0 \
+TP=1 \
+PORT=30000 \
+bash scripts/launch_qwen3_sglang.sh
+```
+
+Then evaluate:
+
+```bash
+MODEL=Qwen3-4B \
+BASE_URL=http://127.0.0.1:30000/v1 \
+N_SAMPLES=16 \
+bash scripts/eval_qwen3_math.sh
+```
+
+### 7. Enable SwanLab
+
+In YAML:
+
+```yaml
+tracking:
+  use_swanlab: true
+  swanlab_mode: cloud
+  swanlab_project: TICO-OPD
+  swanlab_workspace: your-workspace
+  swanlab_experiment_name: qwen3-4B-teacher-32B
+  swanlab_group: qwen3-tico-opd
+  swanlab_tags: tico-opd,qwen3
+```
+
+SwanLab will receive the same unified metric stream as W&B/TensorBoard, including train, rollout, eval, perf, and TICO-specific metrics.
+
+### Conservative Defaults
+
+The default config starts conservatively:
+
+```text
+future_kl enabled
+compression_opd enabled
+compression_length_budget_ratio = 0.75
+compression_advantage_coef = 0.02
+compression_eos_coef = 0.01
+compression_mask_low_importance_tokens = false
 ```
 
 ## Qwen3 Math Evaluation
